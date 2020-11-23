@@ -66,6 +66,80 @@ impl CPU {
         }
     }
 
+    fn get_operand_address(&self, mode: &opcodes::AddressingMode) -> u16 {
+        match mode {
+            opcodes::AddressingMode::Immediate => self.pc + 1,
+
+            opcodes::AddressingMode::ZeroPage => self.mem_read(self.pc + 1) as u16,
+
+            opcodes::AddressingMode::ZeroPageX => {
+                let pos = self.mem_read(self.pc + 1);
+                let addr = pos.wrapping_add(self.reg_x) as u16;
+                addr
+            }
+
+            opcodes::AddressingMode::ZeroPageY => {
+                let pos = self.mem_read(self.pc + 1);
+                let addr = pos.wrapping_add(self.reg_y) as u16;
+                addr
+            }
+
+            opcodes::AddressingMode::Absolute => self.mem_read_u16(self.pc + 1),
+
+            opcodes::AddressingMode::AbsoluteX => {
+                let pos = self.mem_read_u16(self.pc + 1);
+                let addr = pos.wrapping_add(self.reg_x as u16);
+                addr
+            }
+
+            opcodes::AddressingMode::AbsoluteY => {
+                let pos = self.mem_read_u16(self.pc + 1);
+                let addr = pos.wrapping_add(self.reg_y as u16);
+                addr
+            }
+
+            opcodes::AddressingMode::Indirect => todo!(),
+
+            opcodes::AddressingMode::IndirectX => {
+                let base = self.mem_read(self.pc + 1);
+
+                let ptr: u8 = (base as u8).wrapping_add(self.reg_x);
+                let lo = self.mem_read(ptr as u16) as u16;
+                let hi = self.mem_read(ptr.wrapping_add(1) as u16) as u16;
+                (hi << 8) | (lo)
+            }
+
+            opcodes::AddressingMode::IndirectY => {
+                let ptr = self.mem_read(self.pc + 1) as u8;
+                let lo = self.mem_read(ptr as u16) as u16;
+                let hi = self.mem_read(ptr.wrapping_add(1) as u16) as u16;
+                let addr = (hi << 8) | (lo);
+
+                addr.wrapping_add(self.reg_y as u16)
+            }
+
+            opcodes::AddressingMode::Relative => todo!(),
+
+            /* for Implied mode, it should not call this function */
+            opcodes::AddressingMode::Implied => {
+                panic!("mode {:?} is not supported", mode);
+            }
+        }
+    }
+
+    fn lda(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(&mode);
+        let value = self.mem_read(addr);
+
+        self.reg_a = value;
+        self.update_zn(self.reg_a);
+    }
+
+    fn sta(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.reg_a);
+    }
+
     fn tax(&mut self) {
         self.reg_x = self.reg_a;
         self.update_zn(self.reg_x);
@@ -97,17 +171,34 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
-        let ref opcodes: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
+        let ref opcodes_map: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
 
         loop {
             let code = self.mem_read(self.pc);
-            let opcode = opcodes
+
+            let opcode = opcodes_map
                 .get(&code)
                 .expect(&format!("OpCode {:x} is not recognized", code));
 
             match code {
+                0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => {
+                    self.lda(&opcode.mode);
+                }
+
+                0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => {
+                    self.sta(&opcode.mode);
+                }
+
+                0xAA => self.tax(),
+
+                0xe8 => self.inx(),
+
+                0x00 => return,
                 _ => todo!(),
             }
+
+            /* update PC according to the bytes needed for each instr */
+            self.pc += (opcode.len) as u16;
         }
     }
 }
