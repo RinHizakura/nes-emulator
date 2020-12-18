@@ -185,6 +185,14 @@ impl CPU {
         self.add_reg_a(value);
     }
 
+    fn sbc(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(&mode);
+        let value = self.mem_read(addr);
+
+        /* subtract number `n` should equal to add `-n` */
+        self.add_reg_a(((value as i8).wrapping_neg().wrapping_sub(1)) as u8);
+    }
+
     fn lda(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(&mode);
         let value = self.mem_read(addr);
@@ -195,6 +203,24 @@ impl CPU {
     fn sta(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(mode);
         self.mem_write(addr, self.reg_a);
+    }
+
+    fn and(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.set_reg_a(value ^ self.reg_a);
+    }
+
+    fn eor(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.set_reg_a(value ^ self.reg_a);
+    }
+
+    fn ora(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.set_reg_a(value | self.reg_a);
     }
 
     fn tax(&mut self) {
@@ -243,12 +269,28 @@ impl CPU {
                     self.adc(&opcode.mode);
                 }
 
+                0xe9 | 0xe5 | 0xf5 | 0xed | 0xfd | 0xf9 | 0xe1 | 0xf1 => {
+                    self.sbc(&opcode.mode);
+                }
+
                 0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => {
                     self.lda(&opcode.mode);
                 }
 
                 0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => {
                     self.sta(&opcode.mode);
+                }
+
+                0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => {
+                    self.and(&opcode.mode);
+                }
+
+                0x49 | 0x45 | 0x55 | 0x4d | 0x5d | 0x59 | 0x41 | 0x51 => {
+                    self.eor(&opcode.mode);
+                }
+
+                0x09 | 0x05 | 0x15 | 0x0d | 0x1d | 0x19 | 0x01 | 0x11 => {
+                    self.ora(&opcode.mode);
                 }
 
                 0xAA => self.tax(),
@@ -271,7 +313,7 @@ mod test {
     use super::CPU;
 
     #[test]
-    fn test_0xa9_0xaa_pos() {
+    fn test_lda_imm_tax_pos() {
         let mut cpu = CPU::new();
 
         for value in 0x01..0x80 {
@@ -294,7 +336,7 @@ mod test {
     }
 
     #[test]
-    fn test_0xa9_0xaa_zero() {
+    fn test_lda_imm_tax_zero() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x00, 0xaa, 0x00]);
         assert!(cpu.status.contains(CpuFlags::ZERO));
@@ -306,7 +348,7 @@ mod test {
     }
 
     #[test]
-    fn test_0xa9_0xaa_neg() {
+    fn test_lda_imm_tax_neg() {
         let mut cpu = CPU::new();
 
         for value in 0x080..=0xFF {
@@ -330,14 +372,14 @@ mod test {
     }
 
     #[test]
-    fn test_0xe8_overflow() {
+    fn test_inx_overflow() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00]);
         assert_eq!(cpu.reg_x, 1);
     }
 
     #[test]
-    fn test_0x85_0xa5() {
+    fn test_lda_sta_mem() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x55, 0x85, 0x10, 0xa5, 0x10, 0x00]);
 
