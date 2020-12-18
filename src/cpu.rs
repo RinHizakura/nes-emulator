@@ -12,7 +12,6 @@ bitflags! {
         const NEGATIVE          = 0b10000000;
     }
 }
- 
 
 pub struct CPU {
     pub reg_a: u8,
@@ -66,16 +65,16 @@ impl CPU {
     }
 
     /* FIXME: how about a general `set_reg` for every register? */
-    fn set_reg_a(&mut self, value: u8){
+    fn set_reg_a(&mut self, value: u8) {
         self.reg_a = value;
         self.update_zn(self.reg_a);
     }
-    
-    fn set_reg_x(&mut self, value: u8){
+
+    fn set_reg_x(&mut self, value: u8) {
         self.reg_x = value;
         self.update_zn(self.reg_x);
     }
-    
+
     fn add_reg_a(&mut self, data: u8) {
         let sum = self.reg_a as u16
             + data as u16
@@ -85,21 +84,19 @@ impl CPU {
                 0
             }) as u16;
 
-        if sum > 0xff { 
+        if sum > 0xff {
             self.status.insert(CpuFlags::CARRY);
         } else {
             self.status.remove(CpuFlags::CARRY);
         }
-        
 
         let result = sum as u8;
 
-        if (data ^ result) & (self.reg_a ^ result) & 0x80 != 0 { 
+        if (data ^ result) & (self.reg_a ^ result) & 0x80 != 0 {
             self.status.insert(CpuFlags::OVERFLOW);
         } else {
             self.status.remove(CpuFlags::OVERFLOW);
         }
-        
 
         self.set_reg_a(result);
     }
@@ -108,20 +105,16 @@ impl CPU {
         /* set zero flag */
         if result == 0 {
             self.status.insert(CpuFlags::ZERO);
-        }
-        else { 
+        } else {
             self.status.remove(CpuFlags::ZERO);
         }
-        
 
         /* set negative flag */
         if result & 0b1000_0000 != 0 {
             self.status.insert(CpuFlags::NEGATIVE);
-        }
-        else {
+        } else {
             self.status.remove(CpuFlags::NEGATIVE);
         }
-        
     }
 
     fn get_operand_address(&self, mode: &opcodes::AddressingMode) -> u16 {
@@ -185,8 +178,7 @@ impl CPU {
         }
     }
 
-
-    fn adc(&mut self, mode: &opcodes:: AddressingMode) {
+    fn adc(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(&mode);
         let value = self.mem_read(addr);
 
@@ -227,7 +219,7 @@ impl CPU {
         self.pc = self.mem_read_u16(0xFFFC);
         self.sp = 0xfd;
 
-        println!("status {}",self.status.bits());
+        println!("status {}", self.status.bits());
     }
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
@@ -275,8 +267,8 @@ impl CPU {
 
 #[cfg(test)]
 mod test {
-    use super::CPU;
     use super::CpuFlags;
+    use super::CPU;
 
     #[test]
     fn test_0xa9_0xaa_pos() {
