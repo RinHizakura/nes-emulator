@@ -1,12 +1,26 @@
 use crate::opcodes;
 use std::collections::HashMap;
 
+bitflags! {
+    pub struct CpuFlags: u8 {
+        const CARRY             = 0b00000001;
+        const ZERO              = 0b00000010;
+        const INTERRUPT_DISABLE = 0b00000100;
+        const DECIMAL_MODE      = 0b00001000;
+        const BREAK             = 0b00010000;
+        const OVERFLOW          = 0b01000000;
+        const NEGATIVE          = 0b10000000;
+    }
+}
+ 
+
 pub struct CPU {
     pub reg_a: u8,
     pub reg_x: u8,
     pub reg_y: u8,
-    pub status: u8,
+    pub status: CpuFlags,
     pub pc: u16,
+    pub sp: u8,
     mem: [u8; 0xFFFF],
 }
 
@@ -44,26 +58,70 @@ impl CPU {
             reg_a: 0,
             reg_x: 0,
             reg_y: 0,
-            status: 0,
+            status: CpuFlags::INTERRUPT_DISABLE,
             pc: 0,
+            sp: 0xfd,
             mem: [0; 0xFFFF],
         }
+    }
+
+    /* FIXME: how about a general `set_reg` for every register? */
+    fn set_reg_a(&mut self, value: u8){
+        self.reg_a = value;
+        self.update_zn(self.reg_a);
+    }
+    
+    fn set_reg_x(&mut self, value: u8){
+        self.reg_x = value;
+        self.update_zn(self.reg_x);
+    }
+    
+    fn add_reg_a(&mut self, data: u8) {
+        let sum = self.reg_a as u16
+            + data as u16
+            + (if self.status.contains(CpuFlags::CARRY) {
+                1
+            } else {
+                0
+            }) as u16;
+
+        if sum > 0xff { 
+            self.status.insert(CpuFlags::CARRY);
+        } else {
+            self.status.remove(CpuFlags::CARRY);
+        }
+        
+
+        let result = sum as u8;
+
+        if (data ^ result) & (self.reg_a ^ result) & 0x80 != 0 { 
+            self.status.insert(CpuFlags::OVERFLOW);
+        } else {
+            self.status.remove(CpuFlags::OVERFLOW);
+        }
+        
+
+        self.set_reg_a(result);
     }
 
     fn update_zn(&mut self, result: u8) {
         /* set zero flag */
         if result == 0 {
-            self.status |= 0b00000010;
-        } else {
-            self.status &= 0b11111101;
+            self.status.insert(CpuFlags::ZERO);
         }
+        else { 
+            self.status.remove(CpuFlags::ZERO);
+        }
+        
 
         /* set negative flag */
         if result & 0b1000_0000 != 0 {
-            self.status |= 0b10000000;
-        } else {
-            self.status &= 0b01111111;
+            self.status.insert(CpuFlags::NEGATIVE);
         }
+        else {
+            self.status.remove(CpuFlags::NEGATIVE);
+        }
+        
     }
 
     fn get_operand_address(&self, mode: &opcodes::AddressingMode) -> u16 {
@@ -127,12 +185,19 @@ impl CPU {
         }
     }
 
+
+    fn adc(&mut self, mode: &opcodes:: AddressingMode) {
+        let addr = self.get_operand_address(&mode);
+        let value = self.mem_read(addr);
+
+        self.add_reg_a(value);
+    }
+
     fn lda(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(&mode);
         let value = self.mem_read(addr);
 
-        self.reg_a = value;
-        self.update_zn(self.reg_a);
+        self.set_reg_a(value);
     }
 
     fn sta(&mut self, mode: &opcodes::AddressingMode) {
@@ -141,13 +206,11 @@ impl CPU {
     }
 
     fn tax(&mut self) {
-        self.reg_x = self.reg_a;
-        self.update_zn(self.reg_x);
+        self.set_reg_x(self.reg_a);
     }
 
     fn inx(&mut self) {
-        self.reg_x = self.reg_x.wrapping_add(1);
-        self.update_zn(self.reg_x);
+        self.set_reg_x(self.reg_x.wrapping_add(1));
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
@@ -159,9 +222,12 @@ impl CPU {
         self.reg_a = 0;
         self.reg_x = 0;
         self.reg_y = 0;
-        self.status = 0;
 
+        self.status = CpuFlags::INTERRUPT_DISABLE;
         self.pc = self.mem_read_u16(0xFFFC);
+        self.sp = 0xfd;
+
+        println!("status {}",self.status.bits());
     }
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
@@ -181,6 +247,10 @@ impl CPU {
                 .expect(&format!("OpCode {:x} is not recognized", code));
 
             match code {
+                0x69 | 0x65 | 0x75 | 0x6d | 0x7d | 0x79 | 0x61 | 0x71 => {
+                    self.adc(&opcode.mode);
+                }
+
                 0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => {
                     self.lda(&opcode.mode);
                 }
@@ -206,6 +276,7 @@ impl CPU {
 #[cfg(test)]
 mod test {
     use super::CPU;
+    use super::CpuFlags;
 
     #[test]
     fn test_0xa9_0xaa_pos() {
@@ -223,10 +294,10 @@ mod test {
             /* value checking */
             assert_eq!(cpu.reg_a, value);
             /* status checking: Z should be 0 and N should be 0 */
-            assert!(cpu.status & 0b10000010 == 0b00000000);
+            assert!(!cpu.status.contains(CpuFlags::ZERO | CpuFlags::NEGATIVE));
 
             assert_eq!(cpu.reg_x, cpu.reg_a);
-            assert_eq!(cpu.status & 0b10000010, 0b00000000);
+            assert!(!cpu.status.contains(CpuFlags::ZERO | CpuFlags::NEGATIVE));
         }
     }
 
@@ -234,10 +305,12 @@ mod test {
     fn test_0xa9_0xaa_zero() {
         let mut cpu = CPU::new();
         cpu.load_and_run(vec![0xa9, 0x00, 0xaa, 0x00]);
-        assert!(cpu.status & 0b00000010 == 0b00000010);
+        assert!(cpu.status.contains(CpuFlags::ZERO));
+        assert!(!cpu.status.contains(CpuFlags::NEGATIVE));
 
         assert_eq!(cpu.reg_x, cpu.reg_a);
-        assert!(cpu.status & 0b00000010 == 0b00000010);
+        assert!(cpu.status.contains(CpuFlags::ZERO));
+        assert!(!cpu.status.contains(CpuFlags::NEGATIVE));
     }
 
     #[test]
@@ -255,10 +328,12 @@ mod test {
             /* value checking */
             assert_eq!(cpu.reg_a, value);
             /* status checking: Z should be 0 and N should be 1 */
-            assert!(cpu.status & 0b10000010 == 0b10000000);
+            assert!(!cpu.status.contains(CpuFlags::ZERO));
+            assert!(cpu.status.contains(CpuFlags::NEGATIVE));
 
             assert_eq!(cpu.reg_x, cpu.reg_a);
-            assert!(cpu.status & 0b10000010 == 0b10000000);
+            assert!(!cpu.status.contains(CpuFlags::ZERO));
+            assert!(cpu.status.contains(CpuFlags::NEGATIVE));
         }
     }
 
