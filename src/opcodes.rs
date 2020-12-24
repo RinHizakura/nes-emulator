@@ -97,6 +97,18 @@ lazy_static! {
         OpCode::new(0x4e, "LSR", 3, 6, AddressingMode::Absolute),
         OpCode::new(0x5e, "LSR", 3, 7, AddressingMode::AbsoluteX),
 
+        OpCode::new(0x2a, "ROL", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x26, "ROL", 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0x36, "ROL", 2, 6, AddressingMode::ZeroPageX),
+        OpCode::new(0x2e, "ROL", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0x3e, "ROL", 3, 7, AddressingMode::AbsoluteX),
+
+        OpCode::new(0x6a, "ROR", 1, 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x66, "ROR", 2, 5, AddressingMode::ZeroPage),
+        OpCode::new(0x76, "ROR", 2, 6, AddressingMode::ZeroPageX),
+        OpCode::new(0x6e, "ROR", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0x7e, "ROR", 3, 7, AddressingMode::AbsoluteX),
+
         /* Stores, Loads */
         OpCode::new(0xa9, "LDA", 2, 2, AddressingMode::Immediate),
         OpCode::new(0xa5, "LDA", 2, 3, AddressingMode::ZeroPage),

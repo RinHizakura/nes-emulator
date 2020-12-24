@@ -1,6 +1,15 @@
 use crate::opcodes;
 use std::collections::HashMap;
 
+macro_rules! is_accum {
+    ($mode:ident) => {
+        match $mode {
+            opcodes::AddressingMode::NoneAddressing => true,
+            _ => false,
+        };
+    };
+}
+
 bitflags! {
     pub struct CpuFlags: u8 {
         const CARRY             = 0b00000001;
@@ -64,6 +73,15 @@ impl CPU {
         }
     }
 
+    #[inline]
+    fn set_flag(&mut self, cond: bool, flag: CpuFlags) {
+        if cond {
+            self.status.insert(flag);
+        } else {
+            self.status.remove(flag);
+        }
+    }
+
     /* FIXME: how about a general `set_reg` for every register? */
     fn set_reg_a(&mut self, value: u8) {
         self.reg_a = value;
@@ -89,37 +107,23 @@ impl CPU {
                 0
             }) as u16;
 
-        if sum > 0xff {
-            self.status.insert(CpuFlags::CARRY);
-        } else {
-            self.status.remove(CpuFlags::CARRY);
-        }
+        self.set_flag(sum > 0xff, CpuFlags::CARRY);
 
         let result = sum as u8;
 
-        if (data ^ result) & (self.reg_a ^ result) & 0x80 != 0 {
-            self.status.insert(CpuFlags::OVERFLOW);
-        } else {
-            self.status.remove(CpuFlags::OVERFLOW);
-        }
-
+        self.set_flag(
+            ((data ^ result) & (self.reg_a ^ result) & 0x80) != 0,
+            CpuFlags::OVERFLOW,
+        );
         self.set_reg_a(result);
     }
 
     fn update_zn(&mut self, result: u8) {
         /* set zero flag */
-        if result == 0 {
-            self.status.insert(CpuFlags::ZERO);
-        } else {
-            self.status.remove(CpuFlags::ZERO);
-        }
+        self.set_flag(result == 0, CpuFlags::ZERO);
 
         /* set negative flag */
-        if result & 0b1000_0000 != 0 {
-            self.status.insert(CpuFlags::NEGATIVE);
-        } else {
-            self.status.remove(CpuFlags::NEGATIVE);
-        }
+        self.set_flag(result & 0b1000_0000 != 0, CpuFlags::NEGATIVE);
     }
 
     fn get_operand_address(&self, mode: &opcodes::AddressingMode) -> u16 {
@@ -219,58 +223,88 @@ impl CPU {
 
     /* Shifts */
     fn asl(&mut self, mode: &opcodes::AddressingMode) {
-        let cond = match mode {
-            opcodes::AddressingMode::NoneAddressing => true,
-            _ => false,
-        };
-
-        let mut addr = 0;
-        let mut value = if cond {
-            self.reg_a
-        } else {
-            addr = self.get_operand_address(mode);
-            self.mem_read(addr)
-        };
-
-        value = value << 1;
+        let cond = is_accum!(mode);
 
         if cond {
-            self.set_reg_a(value)
+            let mut value = self.reg_a;
+            value <<= 1;
+            self.set_reg_a(value);
         } else {
-            self.set_mem(addr, value)
-        };
+            let addr = self.get_operand_address(mode);
+            let mut value = self.mem_read(addr);
+            value <<= 1;
+            self.set_mem(addr, value);
+        }
     }
 
     fn lsr(&mut self, mode: &opcodes::AddressingMode) {
-        let cond = match mode {
-            opcodes::AddressingMode::NoneAddressing => true,
-            _ => false,
-        };
-
-        let mut addr = 0;
-        let mut value = if cond {
-            self.reg_a
-        } else {
-            addr = self.get_operand_address(mode);
-            self.mem_read(addr)
-        };
-
-        /* Set to contents of old bit 0 */
-        if value & 1 == 1 {
-            self.status.insert(CpuFlags::CARRY)
-        } else {
-            self.status.remove(CpuFlags::CARRY)
-        }
-
-        value = value >> 1;
+        let cond = is_accum!(mode);
 
         if cond {
-            self.set_reg_a(value)
+            let mut value = self.reg_a;
+
+            /* Set to contents of old bit 0 */
+            self.set_flag(value & 1 == 1, CpuFlags::CARRY);
+            value >>= 1;
+
+            self.set_reg_a(value);
         } else {
-            self.set_mem(addr, value)
-        };
+            let addr = self.get_operand_address(mode);
+            let mut value = self.mem_read(addr);
+
+            /* Set to contents of old bit 0 */
+            self.set_flag(value & 1 == 1, CpuFlags::CARRY);
+
+            value >>= 1;
+            self.set_mem(addr, value);
+        }
     }
 
+    fn rol(&mut self, mode: &opcodes::AddressingMode) {
+        let cond = is_accum!(mode);
+
+        if cond {
+            let mut value = self.reg_a;
+
+            let old_carry = self.status.contains(CpuFlags::CARRY);
+            self.set_flag(value >> 7 == 1, CpuFlags::CARRY);
+            value = (value << 1) | (old_carry as u8);
+
+            self.set_reg_a(value);
+        } else {
+            let addr = self.get_operand_address(mode);
+            let mut value = self.mem_read(addr);
+
+            let old_carry = self.status.contains(CpuFlags::CARRY);
+            self.set_flag(value >> 7 == 1, CpuFlags::CARRY);
+            value = (value << 1) | (old_carry as u8);
+
+            self.set_mem(addr, value);
+        }
+    }
+
+    fn ror(&mut self, mode: &opcodes::AddressingMode) {
+        let cond = is_accum!(mode);
+
+        if cond {
+            let mut value = self.reg_a;
+            let old_carry = self.status.contains(CpuFlags::CARRY);
+
+            self.set_flag(value & 1 == 1, CpuFlags::CARRY);
+            value = (value >> 1) | (old_carry as u8) << 7;
+
+            self.set_reg_a(value);
+        } else {
+            let addr = self.get_operand_address(mode);
+            let mut value = self.mem_read(addr);
+
+            let old_carry = self.status.contains(CpuFlags::CARRY);
+            self.set_flag(value & 1 == 1, CpuFlags::CARRY);
+            value = (value >> 1) | (old_carry as u8) << 7;
+
+            self.set_mem(addr, value);
+        }
+    }
     /* Stores, Loads */
     fn lda(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(&mode);
@@ -350,6 +384,12 @@ impl CPU {
                 }
                 0x4a | 0x46 | 0x56 | 0x4e | 0x5e => {
                     self.lsr(&opcode.mode);
+                }
+                0x2a | 0x26 | 0x36 | 0x2e | 0x3e => {
+                    self.rol(&opcode.mode);
+                }
+                0x6a | 0x66 | 0x76 | 0x6e | 0x7e => {
+                    self.ror(&opcode.mode);
                 }
 
                 /* Stores, Loads */
