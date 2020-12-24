@@ -75,6 +75,11 @@ impl CPU {
         self.update_zn(self.reg_x);
     }
 
+    fn set_mem(&mut self, addr: u16, value: u8) {
+        self.mem_write(addr, value);
+        self.update_zn(self.mem[addr as usize]);
+    }
+
     fn add_reg_a(&mut self, data: u8) {
         let sum = self.reg_a as u16
             + data as u16
@@ -172,12 +177,13 @@ impl CPU {
             opcodes::AddressingMode::Relative => todo!(),
 
             /* for Implied mode, it should not call this function */
-            opcodes::AddressingMode::Implied => {
+            opcodes::AddressingMode::NoneAddressing => {
                 panic!("mode {:?} is not supported", mode);
             }
         }
     }
 
+    /* Arithmetic */
     fn adc(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(&mode);
         let value = self.mem_read(addr);
@@ -191,18 +197,6 @@ impl CPU {
 
         /* subtract number `n` should equal to add `-n` */
         self.add_reg_a(((value as i8).wrapping_neg().wrapping_sub(1)) as u8);
-    }
-
-    fn lda(&mut self, mode: &opcodes::AddressingMode) {
-        let addr = self.get_operand_address(&mode);
-        let value = self.mem_read(addr);
-
-        self.set_reg_a(value);
-    }
-
-    fn sta(&mut self, mode: &opcodes::AddressingMode) {
-        let addr = self.get_operand_address(mode);
-        self.mem_write(addr, self.reg_a);
     }
 
     fn and(&mut self, mode: &opcodes::AddressingMode) {
@@ -223,6 +217,74 @@ impl CPU {
         self.set_reg_a(value | self.reg_a);
     }
 
+    /* Shifts */
+    fn asl(&mut self, mode: &opcodes::AddressingMode) {
+        let cond = match mode {
+            opcodes::AddressingMode::NoneAddressing => true,
+            _ => false,
+        };
+
+        let mut addr = 0;
+        let mut value = if cond {
+            self.reg_a
+        } else {
+            addr = self.get_operand_address(mode);
+            self.mem_read(addr)
+        };
+
+        value = value << 1;
+
+        if cond {
+            self.set_reg_a(value)
+        } else {
+            self.set_mem(addr, value)
+        };
+    }
+
+    fn lsr(&mut self, mode: &opcodes::AddressingMode) {
+        let cond = match mode {
+            opcodes::AddressingMode::NoneAddressing => true,
+            _ => false,
+        };
+
+        let mut addr = 0;
+        let mut value = if cond {
+            self.reg_a
+        } else {
+            addr = self.get_operand_address(mode);
+            self.mem_read(addr)
+        };
+
+        /* Set to contents of old bit 0 */
+        if value & 1 == 1 {
+            self.status.insert(CpuFlags::CARRY)
+        } else {
+            self.status.remove(CpuFlags::CARRY)
+        }
+
+        value = value >> 1;
+
+        if cond {
+            self.set_reg_a(value)
+        } else {
+            self.set_mem(addr, value)
+        };
+    }
+
+    /* Stores, Loads */
+    fn lda(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(&mode);
+        let value = self.mem_read(addr);
+
+        self.set_reg_a(value);
+    }
+
+    fn sta(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.reg_a);
+    }
+
+    /* others */
     fn tax(&mut self) {
         self.set_reg_x(self.reg_a);
     }
@@ -265,38 +327,42 @@ impl CPU {
                 .expect(&format!("OpCode {:x} is not recognized", code));
 
             match code {
+                /* Arithmetic */
                 0x69 | 0x65 | 0x75 | 0x6d | 0x7d | 0x79 | 0x61 | 0x71 => {
                     self.adc(&opcode.mode);
                 }
-
                 0xe9 | 0xe5 | 0xf5 | 0xed | 0xfd | 0xf9 | 0xe1 | 0xf1 => {
                     self.sbc(&opcode.mode);
                 }
-
-                0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => {
-                    self.lda(&opcode.mode);
-                }
-
-                0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => {
-                    self.sta(&opcode.mode);
-                }
-
                 0x29 | 0x25 | 0x35 | 0x2d | 0x3d | 0x39 | 0x21 | 0x31 => {
                     self.and(&opcode.mode);
                 }
-
                 0x49 | 0x45 | 0x55 | 0x4d | 0x5d | 0x59 | 0x41 | 0x51 => {
                     self.eor(&opcode.mode);
                 }
-
                 0x09 | 0x05 | 0x15 | 0x0d | 0x1d | 0x19 | 0x01 | 0x11 => {
                     self.ora(&opcode.mode);
                 }
 
+                /* Shifts */
+                0x0a | 0x06 | 0x16 | 0x0e | 0x1e => {
+                    self.asl(&opcode.mode);
+                }
+                0x4a | 0x46 | 0x56 | 0x4e | 0x5e => {
+                    self.lsr(&opcode.mode);
+                }
+
+                /* Stores, Loads */
+                0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => {
+                    self.lda(&opcode.mode);
+                }
+                0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => {
+                    self.sta(&opcode.mode);
+                }
+
+                /* others */
                 0xAA => self.tax(),
-
                 0xe8 => self.inx(),
-
                 0x00 => return,
                 _ => todo!(),
             }
@@ -392,5 +458,25 @@ mod test {
         cpu.load_and_run(vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00]);
 
         assert_eq!(cpu.reg_x, 0xc1)
+    }
+
+    #[test]
+    fn test_asl() {
+        let mut cpu = CPU::new();
+        /*
+         * LDA #$0F
+         * ASL
+         * STA $10
+         * ASL $10
+         * LDA $10
+         *
+         * reg_a should be 15 * 4 = 60
+         */
+
+        cpu.load_and_run(vec![
+            0xa9, 0x0f, 0x0a, 0x85, 0x10, 0x06, 0x10, 0xa5, 0x10, 0x00,
+        ]);
+
+        assert_eq!(cpu.reg_a, 0x3c);
     }
 }
