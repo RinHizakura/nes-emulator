@@ -93,6 +93,11 @@ impl CPU {
         self.update_zn(self.reg_x);
     }
 
+    fn set_reg_y(&mut self, value: u8) {
+        self.reg_y = value;
+        self.update_zn(self.reg_y);
+    }
+
     fn set_mem(&mut self, addr: u16, value: u8) {
         self.mem_write(addr, value);
         self.update_zn(self.mem[addr as usize]);
@@ -318,13 +323,40 @@ impl CPU {
         self.mem_write(addr, self.reg_a);
     }
 
-    /* others */
-    fn tax(&mut self) {
-        self.set_reg_x(self.reg_a);
+    /* Inc, Dec */
+    fn inc(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(&mode);
+        let mut value = self.mem_read(addr);
+        value = value.wrapping_add(1);
+        self.set_mem(addr, value);
+    }
+
+    fn dec(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let mut value = self.mem_read(addr);
+        value = value.wrapping_sub(1);
+        self.set_mem(addr, value);
     }
 
     fn inx(&mut self) {
         self.set_reg_x(self.reg_x.wrapping_add(1));
+    }
+
+    fn iny(&mut self) {
+        self.set_reg_y(self.reg_y.wrapping_add(1));
+    }
+
+    fn dex(&mut self) {
+        self.set_reg_x(self.reg_x.wrapping_sub(1));
+    }
+
+    fn dey(&mut self) {
+        self.set_reg_y(self.reg_y.wrapping_sub(1));
+    }
+
+    /* others */
+    fn tax(&mut self) {
+        self.set_reg_x(self.reg_a);
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
@@ -400,9 +432,20 @@ impl CPU {
                     self.sta(&opcode.mode);
                 }
 
+                /* Inc, Dec */
+                0xe6 | 0xf6 | 0xee | 0xfe => {
+                    self.inc(&opcode.mode);
+                }
+                0xc6 | 0xd6 | 0xce | 0xde => {
+                    self.dec(&opcode.mode);
+                }
+                0xe8 => self.inx(),
+                0xc8 => self.iny(),
+                0xca => self.dex(),
+                0x88 => self.dey(),
+
                 /* others */
                 0xAA => self.tax(),
-                0xe8 => self.inx(),
                 0x00 => return,
                 _ => todo!(),
             }
