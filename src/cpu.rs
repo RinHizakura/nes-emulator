@@ -354,6 +354,14 @@ impl CPU {
         self.set_reg_y(self.reg_y.wrapping_sub(1));
     }
 
+    /* Compare */
+    fn cmp(&mut self, mode: &opcodes::AddressingMode, target: u8) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.set_flag(value <= target, CpuFlags::CARRY);
+        self.update_zn(target.wrapping_sub(value));
+    }
+
     /* others */
     fn tax(&mut self) {
         self.set_reg_x(self.reg_a);
@@ -443,6 +451,17 @@ impl CPU {
                 0xc8 => self.iny(),
                 0xca => self.dex(),
                 0x88 => self.dey(),
+
+                /* Compare */
+                0xc9 | 0xc5 | 0xd5 | 0xcd | 0xdd | 0xd9 | 0xc1 | 0xd1 => {
+                    self.cmp(&opcode.mode, self.reg_a);
+                }
+                0xc0 | 0xc4 | 0xcc => {
+                    self.cmp(&opcode.mode, self.reg_y);
+                }
+                0xe0 | 0xe4 | 0xec => {
+                    self.cmp(&opcode.mode, self.reg_x);
+                }
 
                 /* others */
                 0xAA => self.tax(),
