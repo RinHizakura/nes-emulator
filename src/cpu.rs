@@ -16,11 +16,15 @@ bitflags! {
         const ZERO              = 0b00000010;
         const INTERRUPT_DISABLE = 0b00000100;
         const DECIMAL_MODE      = 0b00001000;
-        const BREAK             = 0b00010000;
+        const BREAK1            = 0b00010000;
+        const BREAK2            = 0b00100000;
+        const BREAK             = 0b00110000;
         const OVERFLOW          = 0b01000000;
         const NEGATIVE          = 0b10000000;
     }
 }
+
+const STACK_BASE: u16 = 0x0100;
 
 pub struct CPU {
     pub reg_a: u8,
@@ -66,7 +70,7 @@ impl CPU {
             reg_a: 0,
             reg_x: 0,
             reg_y: 0,
-            status: CpuFlags::INTERRUPT_DISABLE,
+            status: CpuFlags::from_bits_truncate(0b100100),
             pc: 0,
             sp: 0xfd,
             mem: [0; 0xFFFF],
@@ -163,7 +167,19 @@ impl CPU {
                 addr
             }
 
-            opcodes::AddressingMode::Indirect => todo!(),
+            /* since the only Indirect mode instruction is JMP, and this mode of JMP
+            has bug in 6502, we implement the bug here accordingly */
+            opcodes::AddressingMode::Indirect => {
+                let pos = self.mem_read_u16(self.pc + 1);
+                let addr = if pos & 0x00FF == 0x00FF {
+                    let lo = self.mem_read(pos) as u16;
+                    let hi = self.mem_read(pos & 0xFF00) as u16;
+                    hi << 8 | lo
+                } else {
+                    self.mem_read_u16(pos)
+                };
+                addr
+            }
 
             opcodes::AddressingMode::IndirectX => {
                 let base = self.mem_read(self.pc + 1);
@@ -190,6 +206,29 @@ impl CPU {
                 panic!("mode {:?} is not supported", mode);
             }
         }
+    }
+
+    fn stack_push(&mut self, data: u8) {
+        self.mem_write(STACK_BASE + self.sp as u16, data);
+        self.sp = self.sp.wrapping_sub(1)
+    }
+
+    fn stack_push_u16(&mut self, data: u16) {
+        let hi = (data >> 8) as u8;
+        let lo = (data & 0xff) as u8;
+        self.stack_push(hi);
+        self.stack_push(lo);
+    }
+
+    fn stack_pop(&mut self) -> u8 {
+        self.sp = self.sp.wrapping_add(1);
+        self.mem_read(STACK_BASE + self.sp as u16)
+    }
+
+    fn stack_pop_u16(&mut self) -> u16 {
+        let lo = self.stack_pop() as u16;
+        let hi = self.stack_pop() as u16;
+        hi << 8 | lo
     }
 
     /* Arithmetic */
@@ -362,6 +401,12 @@ impl CPU {
         self.update_zn(target.wrapping_sub(value));
     }
 
+    /* Branching */
+    fn jmp(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.pc = addr
+    }
+
     /* others */
     fn tax(&mut self) {
         self.set_reg_x(self.reg_a);
@@ -377,7 +422,7 @@ impl CPU {
         self.reg_x = 0;
         self.reg_y = 0;
 
-        self.status = CpuFlags::INTERRUPT_DISABLE;
+        self.status = CpuFlags::from_bits_truncate(0b100100); // 0x34
         self.pc = self.mem_read_u16(0xFFFC);
         self.sp = 0xfd;
 
@@ -399,6 +444,8 @@ impl CPU {
             let opcode = opcodes_map
                 .get(&code)
                 .expect(&format!("OpCode {:x} is not recognized", code));
+
+            let pc_state = self.pc;
 
             match code {
                 /* Arithmetic */
@@ -463,14 +510,39 @@ impl CPU {
                     self.cmp(&opcode.mode, self.reg_x);
                 }
 
+                /* Branching */
+                0x4c | 0x6c => {
+                    self.jmp(&opcode.mode);
+                }
+
+                0x20 => {
+                    self.stack_push_u16(self.pc + 2);
+                    self.jmp(&opcode.mode);
+                }
+
+                0x60 => {
+                    self.pc = self.stack_pop_u16() + 1;
+                }
+
+                0x40 => {
+                    /* FIXME: is it correct to ignore break status bit? */
+                    self.status.bits = self.stack_pop() & CpuFlags::BREAK.bits;
+                    self.pc = self.stack_pop_u16();
+                }
                 /* others */
                 0xAA => self.tax(),
-                0x00 => return,
+                0x00 => {
+                    /* FIXME shouldn't we set the break flag here ? */
+                    return;
+                }
                 _ => todo!(),
             }
 
-            /* update PC according to the bytes needed for each instr */
-            self.pc += (opcode.len) as u16;
+            /* update PC according to the bytes needed for each instr
+            if pc didn't be changed by an instruction */
+            if self.pc == pc_state {
+                self.pc += (opcode.len) as u16;
+            }
         }
     }
 }

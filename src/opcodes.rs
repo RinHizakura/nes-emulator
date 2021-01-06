@@ -161,6 +161,14 @@ lazy_static! {
         OpCode::new(0xe4, "CPX", 2, 3, AddressingMode::ZeroPage),
         OpCode::new(0xec, "CPX", 3, 4, AddressingMode::Absolute),
 
+        /* Branching */
+        OpCode::new(0x4c, "JMP", 3, 3, AddressingMode::Absolute),
+        OpCode::new(0x6c, "JMP", 3, 5, AddressingMode::Indirect),
+
+        OpCode::new(0x20, "JSR", 3, 6, AddressingMode::Absolute),
+        OpCode::new(0x60, "RTS", 1, 6, AddressingMode::NoneAddressing),
+        OpCode::new(0x40, "RTI", 1, 6, AddressingMode::NoneAddressing),
+
         /* others */
         OpCode::new(0xaa, "TAX", 1, 2, AddressingMode::NoneAddressing),
         OpCode::new(0x00, "BRK", 1, 7, AddressingMode::NoneAddressing),
