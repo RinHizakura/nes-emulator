@@ -407,6 +407,16 @@ impl CPU {
         self.pc = addr
     }
 
+    fn branch(&mut self, condition: bool) {
+        if condition {
+            let d: u16 = self.mem_read(self.pc + 1) as u16;
+            /* relative bytes counted from next pc value */
+            let jump_addr = self.pc.wrapping_add(2).wrapping_add(d as u16);
+
+            self.pc = jump_addr;
+        }
+    }
+
     /* others */
     fn tax(&mut self) {
         self.set_reg_x(self.reg_a);
@@ -514,21 +524,43 @@ impl CPU {
                 0x4c | 0x6c => {
                     self.jmp(&opcode.mode);
                 }
-
                 0x20 => {
                     self.stack_push_u16(self.pc + 2);
                     self.jmp(&opcode.mode);
                 }
-
                 0x60 => {
                     self.pc = self.stack_pop_u16() + 1;
                 }
-
                 0x40 => {
                     /* FIXME: is it correct to ignore break status bit? */
                     self.status.bits = self.stack_pop() & CpuFlags::BREAK.bits;
                     self.pc = self.stack_pop_u16();
                 }
+                0xd0 => {
+                    self.branch(!self.status.contains(CpuFlags::ZERO));
+                }
+                0x70 => {
+                    self.branch(self.status.contains(CpuFlags::OVERFLOW));
+                }
+                0x50 => {
+                    self.branch(!self.status.contains(CpuFlags::OVERFLOW));
+                }
+                0x30 => {
+                    self.branch(self.status.contains(CpuFlags::NEGATIVE));
+                }
+                0xf0 => {
+                    self.branch(self.status.contains(CpuFlags::ZERO));
+                }
+                0xb0 => {
+                    self.branch(self.status.contains(CpuFlags::CARRY));
+                }
+                0x90 => {
+                    self.branch(!self.status.contains(CpuFlags::CARRY));
+                }
+                0x10 => {
+                    self.branch(!self.status.contains(CpuFlags::NEGATIVE));
+                }
+
                 /* others */
                 0xAA => self.tax(),
                 0x00 => {
