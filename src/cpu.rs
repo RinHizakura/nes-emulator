@@ -605,6 +605,14 @@ impl CPU {
                 0x10 => {
                     self.branch(!self.status.contains(CpuFlags::NEGATIVE));
                 }
+                /* flag clear */
+                0xd8 => self.status.remove(CpuFlags::DECIMAL_MODE),
+                0x58 => self.status.remove(CpuFlags::INTERRUPT_DISABLE),
+                0xb8 => self.status.remove(CpuFlags::OVERFLOW),
+                0x18 => self.status.remove(CpuFlags::CARRY),
+                0x38 => self.status.insert(CpuFlags::CARRY),
+                0x78 => self.status.insert(CpuFlags::INTERRUPT_DISABLE),
+                0xf8 => self.status.insert(CpuFlags::DECIMAL_MODE),
 
                 /* others */
                 0xAA => self.tax(),
