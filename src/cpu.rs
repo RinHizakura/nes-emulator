@@ -271,11 +271,13 @@ impl CPU {
 
         if cond {
             let mut value = self.reg_a;
+            self.set_flag(value >> 7 == 1, CpuFlags::CARRY);
             value <<= 1;
             self.set_reg_a(value);
         } else {
             let addr = self.get_operand_address(mode);
             let mut value = self.mem_read(addr);
+            self.set_flag(value >> 7 == 1, CpuFlags::CARRY);
             value <<= 1;
             self.set_mem(addr, value);
         }
