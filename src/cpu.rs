@@ -440,6 +440,18 @@ impl CPU {
         self.pc = addr
     }
 
+    /* Stack */
+    fn pla(&mut self) {
+        let value = self.stack_pop();
+        self.set_reg_a(value);
+    }
+
+    fn php(&mut self) {
+        let mut flags = self.status.clone();
+        flags.insert(CpuFlags::BREAK);
+        self.stack_push(flags.bits());
+    }
+
     fn branch(&mut self, condition: bool) {
         if condition {
             let d: u16 = self.mem_read(self.pc + 1) as u16;
@@ -575,7 +587,7 @@ impl CPU {
                 }
                 0x40 => {
                     /* FIXME: is it correct to ignore break status bit? */
-                    self.status.bits = self.stack_pop() & CpuFlags::BREAK.bits;
+                    self.status.bits = self.stack_pop() & !CpuFlags::BREAK.bits;
                     self.pc = self.stack_pop_u16();
                 }
                 0xd0 => {
@@ -602,7 +614,7 @@ impl CPU {
                 0x10 => {
                     self.branch(!self.status.contains(CpuFlags::NEGATIVE));
                 }
-                /* flag clear */
+                /* Flags clear */
                 0xd8 => self.status.remove(CpuFlags::DECIMAL_MODE),
                 0x58 => self.status.remove(CpuFlags::INTERRUPT_DISABLE),
                 0xb8 => self.status.remove(CpuFlags::OVERFLOW),
@@ -610,6 +622,15 @@ impl CPU {
                 0x38 => self.status.insert(CpuFlags::CARRY),
                 0x78 => self.status.insert(CpuFlags::INTERRUPT_DISABLE),
                 0xf8 => self.status.insert(CpuFlags::DECIMAL_MODE),
+
+                /* Stack */
+                0x48 => self.stack_push(self.reg_a),
+                0x68 => self.pla(),
+                0x08 => self.php(),
+                0x28 => {
+                    /* FIXME: is it correct to ignore break status bit? */
+                    self.status.bits = self.stack_pop() & !CpuFlags::BREAK.bits;
+                }
 
                 /* others */
                 0xaa => self.set_reg_x(self.reg_a),
