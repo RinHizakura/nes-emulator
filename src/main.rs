@@ -144,16 +144,11 @@ fn main() {
         cpu.mem_write(0xfe, rng.gen_range(1..16));
 
         if read_screen_state(cpu, &mut screen_state) {
-            println!("update");
-
             texture.update(None, &screen_state, 32 * 3).unwrap();
-
             canvas.copy(&texture, None, None).unwrap();
-
             canvas.present();
         }
-
-        ::std::thread::sleep(std::time::Duration::from_millis(100));
+        ::std::thread::sleep(std::time::Duration::new(0, 70_000));
     });
 
     println!("Done!")

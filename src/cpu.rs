@@ -250,7 +250,7 @@ impl CPU {
     fn and(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
-        self.set_reg_a(value ^ self.reg_a);
+        self.set_reg_a(value & self.reg_a);
     }
 
     fn eor(&mut self, mode: &opcodes::AddressingMode) {
@@ -361,6 +361,7 @@ impl CPU {
 
     fn sta(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(mode);
+        //println!("addr {}", addr);
         self.mem_write(addr, self.reg_a);
     }
 
@@ -454,7 +455,7 @@ impl CPU {
 
     fn branch(&mut self, condition: bool) {
         if condition {
-            let d: u16 = self.mem_read(self.pc + 1) as u16;
+            let d: i8 = self.mem_read(self.pc + 1) as i8;
             /* relative bytes counted from next pc value */
             let jump_addr = self.pc.wrapping_add(2).wrapping_add(d as u16);
 
@@ -505,7 +506,6 @@ impl CPU {
                 .expect(&format!("OpCode {:x} is not recognized", code));
 
             let pc_state = self.pc;
-            //println!("code 0x{:X?}", code);
             match code {
                 /* Arithmetic */
                 0x69 | 0x65 | 0x75 | 0x6d | 0x7d | 0x79 | 0x61 | 0x71 => {
@@ -648,7 +648,9 @@ impl CPU {
                 0x8a => self.set_reg_a(self.reg_x),
                 0x9a => self.sp = self.reg_x,
                 0x98 => self.set_reg_a(self.reg_y),
-
+                0xea => {
+                    /* do nothing */
+                }
                 0x00 => {
                     /* FIXME shouldn't we set the break flag here ? */
                     return;
@@ -661,7 +663,7 @@ impl CPU {
             if self.pc == pc_state {
                 self.pc += (opcode.len) as u16;
             }
-
+            
             callback(self);
         }
     }
