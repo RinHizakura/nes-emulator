@@ -362,6 +362,28 @@ impl CPU {
         self.mem_write(addr, self.reg_a);
     }
 
+    fn ldx(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.set_reg_x(value);
+    }
+
+    fn ldy(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.set_reg_y(value);
+    }
+
+    fn stx(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.reg_x);
+    }
+
+    fn sty(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.reg_y);
+    }
+
     /* Inc, Dec */
     fn inc(&mut self, mode: &opcodes::AddressingMode) {
         let addr = self.get_operand_address(&mode);
@@ -399,6 +421,15 @@ impl CPU {
         let value = self.mem_read(addr);
         self.set_flag(value <= target, CpuFlags::CARRY);
         self.update_zn(target.wrapping_sub(value));
+    }
+
+    fn bit(&mut self, mode: &opcodes::AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.set_flag((self.reg_a & value) == 0, CpuFlags::ZERO);
+
+        self.status.set(CpuFlags::NEGATIVE, value & 0b10000000 > 0);
+        self.status.set(CpuFlags::OVERFLOW, value & 0b01000000 > 0);
     }
 
     /* Branching */
@@ -496,6 +527,18 @@ impl CPU {
                 0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => {
                     self.sta(&opcode.mode);
                 }
+                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => {
+                    self.ldx(&opcode.mode);
+                }
+                0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => {
+                    self.ldy(&opcode.mode);
+                }
+                0x86 | 0x96 | 0x8e => {
+                    self.stx(&opcode.mode);
+                }
+                0x84 | 0x94 | 0x8c => {
+                    self.sty(&opcode.mode);
+                }
 
                 /* Inc, Dec */
                 0xe6 | 0xf6 | 0xee | 0xfe => {
@@ -519,7 +562,9 @@ impl CPU {
                 0xe0 | 0xe4 | 0xec => {
                     self.cmp(&opcode.mode, self.reg_x);
                 }
-
+                0x24 | 0x2c => {
+                    self.bit(&opcode.mode);
+                }
                 /* Branching */
                 0x4c | 0x6c => {
                     self.jmp(&opcode.mode);
