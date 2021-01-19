@@ -450,11 +450,6 @@ impl CPU {
         }
     }
 
-    /* others */
-    fn tax(&mut self) {
-        self.set_reg_x(self.reg_a);
-    }
-
     pub fn load(&mut self, program: Vec<u8>) {
         self.mem[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
         self.mem_write_u16(0xFFFC, 0x8000);
@@ -617,7 +612,13 @@ impl CPU {
                 0xf8 => self.status.insert(CpuFlags::DECIMAL_MODE),
 
                 /* others */
-                0xAA => self.tax(),
+                0xaa => self.set_reg_x(self.reg_a),
+                0xa8 => self.set_reg_y(self.reg_a),
+                0xba => self.set_reg_x(self.sp),
+                0x8a => self.set_reg_a(self.reg_x),
+                0x9a => self.sp = self.reg_x,
+                0x98 => self.set_reg_a(self.reg_y),
+
                 0x00 => {
                     /* FIXME shouldn't we set the break flag here ? */
                     return;
