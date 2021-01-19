@@ -36,7 +36,7 @@ pub struct CPU {
     mem: [u8; 0xFFFF],
 }
 
-trait Mem {
+pub trait Mem {
     fn mem_read(&self, addr: u16) -> u8;
     fn mem_write(&mut self, addr: u16, data: u8);
 
@@ -463,8 +463,12 @@ impl CPU {
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
-        self.mem[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
-        self.mem_write_u16(0xFFFC, 0x8000);
+        /* self.mem[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
+         * self.mem_write_u16(0xFFFC, 0x8000);
+         */
+
+        self.mem[0x0600..(0x0600 + program.len())].copy_from_slice(&program[..]);
+        self.mem_write_u16(0xFFFC, 0x0600);
     }
 
     pub fn reset(&mut self) {
@@ -475,8 +479,6 @@ impl CPU {
         self.status = CpuFlags::from_bits_truncate(0b100100); // 0x34
         self.pc = self.mem_read_u16(0xFFFC);
         self.sp = 0xfd;
-
-        println!("status {}", self.status.bits());
     }
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
@@ -486,6 +488,13 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut CPU),
+    {
         let ref opcodes_map: HashMap<u8, &'static opcodes::OpCode> = *opcodes::OPCODES_MAP;
 
         loop {
@@ -496,7 +505,7 @@ impl CPU {
                 .expect(&format!("OpCode {:x} is not recognized", code));
 
             let pc_state = self.pc;
-
+            //println!("code 0x{:X?}", code);
             match code {
                 /* Arithmetic */
                 0x69 | 0x65 | 0x75 | 0x6d | 0x7d | 0x79 | 0x61 | 0x71 => {
@@ -652,6 +661,8 @@ impl CPU {
             if self.pc == pc_state {
                 self.pc += (opcode.len) as u16;
             }
+
+            callback(self);
         }
     }
 }
